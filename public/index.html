@@ -130,8 +130,13 @@ body {
   letter-spacing: -.015em; margin: 0;
 }
 .masthead h1 em { font-style: italic; color: var(--brick); }
+/* Проза идёт ВО ВСЮ ширину полосы набора. Ограничение по 62–68 ch
+   держало текст примерно на 60% ширины страницы, и на широком экране
+   это читалось как сбитая вёрстка, а не как забота о длине строки.
+   Решение Alexey 2026-08-20. Вернуть меру — добавить max-width сюда,
+   в .verdict p, section > .lede и .step p: четыре места, одно число. */
 .standfirst {
-  font-size: var(--step-1); color: var(--ink-2); max-width: 62ch;
+  font-size: var(--step-1); color: var(--ink-2);
   text-wrap: pretty; margin: 0;
 }
 
@@ -156,7 +161,7 @@ body {
   font-family: var(--f-display); font-weight: 400; font-size: var(--step-3);
   margin: 0; line-height: 1.2; text-wrap: balance;
 }
-.verdict p { margin: 0; color: var(--ink-2); max-width: 68ch; }
+.verdict p { margin: 0; color: var(--ink-2); }
 .verdict strong { color: var(--ink); }
 
 /* ---------- секции ---------- */
@@ -165,7 +170,7 @@ section > h2 {
   font-family: var(--f-display); font-weight: 400; font-size: var(--step-3);
   margin: 0 0 .4rem; line-height: 1.15; text-wrap: balance;
 }
-section > .lede { color: var(--ink-2); max-width: 68ch; margin: 0 0 1.75rem; text-wrap: pretty; }
+section > .lede { color: var(--ink-2); margin: 0 0 1.75rem; text-wrap: pretty; }
 .tag {
   font-family: var(--f-num); font-size: .7rem; letter-spacing: .14em;
   text-transform: uppercase; color: var(--amber); display: block; margin-bottom: .5rem;
@@ -525,7 +530,7 @@ td a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   line-height: 1; font-style: italic;
 }
 .step h3 { margin: 0 0 .35rem; font-size: var(--step-1); font-weight: 600; }
-.step p { margin: 0 0 .6rem; color: var(--ink-2); max-width: 66ch; }
+.step p { margin: 0 0 .6rem; color: var(--ink-2); }
 .step .note {
   background: var(--amber-soft); border-left: 3px solid var(--amber);
   padding: .6rem .8rem; font-size: .9rem; margin-top: .6rem;
@@ -580,7 +585,7 @@ footer code { font-family: var(--f-num); color: var(--ink-2); }
 <!-- UPDATED:START -->
   <p class="updated">
     <span class="updated-dot" aria-hidden="true"></span>
-    Страница обновлена <time datetime="2026-08-20T16:00:33.649Z" data-updated>20 августа 2026 г. в 18:00 по Калининграду</time>
+    Страница обновлена <time datetime="2026-08-20T16:12:04.956Z" data-updated>20 августа 2026 г. в 18:12 по Калининграду</time>
   </p>
   <script>
   (function () {
@@ -599,7 +604,6 @@ footer code { font-family: var(--f-num); color: var(--ink-2); }
 <!-- UPDATED:END -->
   <div class="eyebrow">
 <!-- EYEBROW:START -->
-    <span>Подбор дома для отца</span>
     <span>19.08.2026</span>
     <span>до 17 млн ₽</span>
     <span>пригород Калининграда</span><!-- EYEBROW:END -->
@@ -638,9 +642,10 @@ footer code { font-family: var(--f-num); color: var(--ink-2); }
     требования, чем короткий список без объяснений.
   </p>
   <p>
-    Строки красятся тремя цветами и подписываются. <strong>Отметки сохраняются в этом
-    браузере</strong>, а кнопкой «Сохранить страницу с отметками» превращаются в файл,
-    который можно переслать — вместе со всей разметкой.
+    Строки красятся тремя цветами и подписываются. <strong>Отметки общие</strong> —
+    вы оба видите разметку друг друга, она сохраняется сама и переживает пересборку
+    страницы. Кнопка «Сохранить страницу с отметками» остаётся на случай, когда нужен
+    отдельный снимок для архива.
   </p>
 </div>
 
