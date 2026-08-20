@@ -33,20 +33,22 @@ Kaliningrad`): переносить их сюда значило бы раздв
 
 ## Первая настройка
 
-```bat
-npm install
+Node на этой машине портативный и в PATH его нет, поэтому `npx` не
+работает. Все команды wrangler зовутся через обёртку `cf.cmd` из этой
+папки — она подставляет нужный node сама.
 
-npx wrangler login
-npx wrangler d1 create dom-kgd-marks
+```bat
+cf login
+cf d1 create dom-kgd-marks
 ```
 
 Полученный `database_id` вписать в `wrangler.toml`, затем:
 
 ```bat
-npm run db:schema
-npx wrangler pages project create dom-kgd-2be42d1d18 --production-branch main
-npx wrangler pages secret put SYNC_TOKEN
-npx wrangler pages deploy
+cf d1 execute dom-kgd-marks --remote --file=schema.sql
+cf pages project create dom-kgd-2be42d1d18 --production-branch main
+cf pages secret put SYNC_TOKEN
+cf pages deploy
 ```
 
 `SYNC_TOKEN` — содержимое `.sync-token` (файл не коммитится). Он же
