@@ -51,7 +51,12 @@ function denied(request, env) {
   if (!env.SYNC_TOKEN) {
     return json({ ошибка: 'На сервере не задан SYNC_TOKEN' }, 500);
   }
-  if (request.headers.get('x-sync-token') !== env.SYNC_TOKEN) {
+  // Обе стороны подрезаются. Секрет попадает сюда через консоль или
+  // через панель, и хвостовой перевод строки к нему цепляется молча:
+  // страница шлёт верный токен, сервер отвечает «неверный», и понять
+  // это по ответу невозможно. Значащих пробелов у токена не бывает.
+  const прислан = (request.headers.get('x-sync-token') || '').trim();
+  if (прислан !== String(env.SYNC_TOKEN).trim()) {
     return json({ ошибка: 'Неверный токен синхронизации' }, 403);
   }
   return null;
