@@ -402,6 +402,9 @@ tr.lead td:first-child { font-weight: 600; }
 .sl-marks button.m-y { color: var(--mk-y); }
 .sl-marks button.m-r { color: var(--mk-r); }
 .sl-marks button.on { border-color: var(--ink); background: var(--ink); color: var(--ground); }
+/* Несколько кнопок могут быть .on одновременно — цвет теперь
+   множественный выбор (объединение), не радио-группа с одним активным
+   вариантом. */
 
 .sl-table th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
 .sl-table th[data-sort]:hover { color: var(--ink); }
@@ -457,8 +460,6 @@ tr.lead td:first-child { font-weight: 600; }
   background: var(--surface);
 }
 .sl-note::placeholder { color: var(--ink-3); opacity: .55; }
-
-.sl-marks button.m-note { color: var(--amber); }
 
 /* Отделка редактируется прямо в строке: у 36% объектов классификатор
    не находит её в тексте, и единственный способ узнать — спросить
@@ -516,11 +517,19 @@ td a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .pill.no  { color: var(--bad);  background: var(--bad-soft); }
 .pill.mid { color: var(--amber); background: var(--amber-soft); }
 
-/* Ссылки на площадки объекта — второй строкой под адресом.
+/* Ссылки на площадки объекта — второй строкой под адресом, чипами.
    Отдельной колонкой они не влезали: таблица и так из пятнадцати
-   колонок, а колонка за правым краем экрана — это колонка, которой нет. */
-.sl-srcs { font-size: .74rem; line-height: 1.5; margin-top: .15rem; }
-.sl-srcs a { white-space: nowrap; }
+   колонок, а колонка за правым краем экрана — это колонка, которой нет.
+   Чип вместо голого текста через точку отделяет ссылку от адреса
+   визуально, не занимая нового места в разметке. */
+.sl-srcs { font-size: .74rem; line-height: 1.6; margin-top: .25rem; display: flex; flex-wrap: wrap; gap: .3rem; }
+.sl-src-chip {
+  display: inline-block; white-space: nowrap; text-decoration: none;
+  padding: .08rem .5rem; border: 1px solid var(--rule); border-radius: 999px;
+  color: var(--ink-2); background: var(--surface);
+}
+a.sl-src-chip:hover { border-color: var(--amber); color: var(--amber); }
+span.sl-src-chip { cursor: default; }
 
 /* ---------- шаги ---------- */
 .steps { display: grid; gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
@@ -585,7 +594,7 @@ footer code { font-family: var(--f-num); color: var(--ink-2); }
 <!-- UPDATED:START -->
   <p class="updated">
     <span class="updated-dot" aria-hidden="true"></span>
-    Страница обновлена <time datetime="2026-08-20T16:12:04.956Z" data-updated>20 августа 2026 г. в 18:12 по Калининграду</time>
+    Страница обновлена <time datetime="2026-08-22T18:06:41.025Z" data-updated>22 августа 2026 г. в 20:06 по Калининграду</time>
   </p>
   <script>
   (function () {
@@ -633,8 +642,10 @@ footer code { font-family: var(--f-num); color: var(--ink-2); }
 <div class="verdict">
   <h2>Это не отчёт, а поверхность для решения</h2>
   <p>
-    Страница открывается <strong>уже настроенной на критерии</strong>: цена, площадь, участок,
-    этажность, год, стены, удалённость. Ничего вводить не нужно — нужно смотреть и отмечать.
+    В первый раз страница открывается <strong>настроенной на пороги брифа</strong>: цена,
+    площадь, участок, этажность, год, стены, удалённость. Дальше — на том, что вы оставили:
+    фильтры, сортировка и цветные метки запоминаются в этом браузере и переживают
+    перезагрузку, у каждого из вас свои.
   </p>
   <p>
     Любой порог можно <strong>подвинуть прямо здесь</strong> и сразу увидеть, что за ним стоит.
@@ -642,10 +653,11 @@ footer code { font-family: var(--f-num); color: var(--ink-2); }
     требования, чем короткий список без объяснений.
   </p>
   <p>
-    Строки красятся тремя цветами и подписываются. <strong>Отметки общие</strong> —
+    Строки красятся тремя цветами и подписываются. <strong>Отметки объектов общие</strong> —
     вы оба видите разметку друг друга, она сохраняется сама и переживает пересборку
-    страницы. Кнопка «Сохранить страницу с отметками» остаётся на случай, когда нужен
-    отдельный снимок для архива.
+    страницы. А вот какие сейчас включены фильтры и сортировка — личное дело каждого
+    браузера, не общее. Кнопка «Сохранить страницу с отметками» остаётся на случай, когда
+    нужен отдельный снимок для архива.
   </p>
 </div>
 
@@ -990,14 +1002,14 @@ document.addEventListener('DOMContentLoaded', function () {
   <div class="sl-group">
     <label>метка</label>
     <div class="sl-marks" id="hsMarkFilter">
-      <button type="button" data-mark="" class="on">все</button>
+      <button type="button" data-mark="" class="sl-mark-all" title="сбросить выбор цвета">все</button>
       <button type="button" data-mark="g" class="m-g" title="зелёные">●</button>
       <button type="button" data-mark="y" class="m-y" title="жёлтые">●</button>
       <button type="button" data-mark="r" class="m-r" title="красные">●</button>
       <button type="button" data-mark="none" title="без метки">○</button>
-      <button type="button" data-mark="note" class="m-note" title="только с заметкой">✎</button>
     </div>
   </div>
+  <label class="sl-check"><input type="checkbox" id="hsHasNote"> только с заметкой</label>
   <label class="sl-check" title="Поле, которого нет в объявлении, — это пробел в данных, а не ответ «не подходит». Пока галочка стоит, такие объекты остаются в списке."><input type="checkbox" id="hsUnknown" checked> оставлять с неизвестными полями</label>
   <span class="sl-spacer"></span>
   <span class="sl-count" id="hsCount"></span>
@@ -1385,15 +1397,20 @@ window.slTable = (function () {
   // одиннадцатую позицию не влезает по ширине и уезжает за правый край,
   // то есть её как бы и нет. Строка без r.srcs ведёт себя как раньше —
   // поле необязательное, другие задачи от него не зависят.
+  //
+  // Каждая ссылка — чип, а не голый текст через точку: чип виден с
+  // первого взгляда как «ссылка на площадку», а не как продолжение
+  // адреса. Место то же, ширина таблицы не меняется — это стилизация
+  // внутри той же ячейки, не новая колонка.
   function srcLinks(r) {
     if (!r.srcs || !r.srcs.length) return '';
     // Запись без url — подпись единственной площадки: ссылка на неё уже
     // стоит на адресе выше, и дублировать её незачем.
     var links = r.srcs.map(function (s) {
-      if (!s.url) return '<span class="sl-dim">' + esc(s.label) + '</span>';
-      return '<a href="' + esc(s.url) + '" target="_blank" rel="noopener"' +
+      if (!s.url) return '<span class="sl-src-chip sl-dim">' + esc(s.label) + '</span>';
+      return '<a class="sl-src-chip" href="' + esc(s.url) + '" target="_blank" rel="noopener"' +
         (s.title ? ' title="' + esc(s.title) + '"' : '') + '>' + esc(s.label) + '</a>';
-    }).join('<span class="sl-dim"> · </span>');
+    }).join('');
     // Пояснение — подсказкой, а не текстом в строке: слова «один объект»
     // рядом с подписями площадок переносились на вторую строку и делали
     // таблицу выше, ничего не добавляя к очевидному из вёрстки.
@@ -1437,6 +1454,12 @@ window.slTable = (function () {
       var m = f.kind === 'rangeMoney' ? 1e6 : 1;
       return [a * m, (f.openMax && b >= +f.max) ? Infinity : b * m];
     }
+    // Обратное преобразование — из сохранённого значения обратно в сырые
+    // позиции ручек, для восстановления после перезагрузки.
+    function rangeRaw(f, stored) {
+      var m = f.kind === 'rangeMoney' ? 1e6 : 1;
+      return [stored[0] / m, stored[1] === Infinity ? +f.max : stored[1] / m];
+    }
 
     function defaults() {
       var d = {};
@@ -1455,6 +1478,82 @@ window.slTable = (function () {
     // тогда счётчик честно говорит, сколько это стоило.
     var keepUnknown = true;
     var sortKey = "mins", sortDir = 1;
+    // Цвет и «есть заметка» — тоже фильтры (они сужают выборку не хуже
+    // диапазона или чекбокса), поэтому персистируются наравне со всем
+    // остальным ниже — см. saveView()/restoreView().
+    var markSel = [];       // выбранные цвета/«без метки», объединение (ИЛИ)
+    var noteOnly = false;   // «только с заметкой», пересечение (И) с markSel
+
+    // ---------- персистентность вида: ВСЁ, что сужает/упорядочивает ----------
+    // Пороги брифа — стартовая точка для сбора данных, а не то, к чему
+    // страница обязана возвращаться. Единственный, кто реально настраивает
+    // фильтры здесь, — один человек; опасение «двое увидят разное», ради
+    // которого раньше ничего не сохранялось, к настоящему использованию
+    // не относится. Персистируется буквально всё, что фильтрует
+    // отображаемый список: диапазоны, чекбоксы критериев, keepUnknown,
+    // цветные метки, «только с заметкой» и сортировка — иначе часть
+    // выбора пользователя слетала бы, а часть нет, что хуже, чем не
+    // сохранять вовсе. Отказ хранилища тихий — в отличие от меток
+    // объектов (см. выше): потерять сохранённые фильтры не значит
+    // потерять чью-то ручную разметку, а всего лишь откатиться к брифу.
+    var VIEW_KEY = STORE + ':view:' + ns;
+    function saveView() {
+      try {
+        localStorage.setItem(VIEW_KEY, JSON.stringify({
+          filters: F, sortKey: sortKey, sortDir: sortDir, keepUnknown: keepUnknown,
+          marks: markSel, hasNote: noteOnly
+        }));
+      } catch (e) { /* нет доступа к хранилищу — просто работаем без сохранения */ }
+    }
+    function restoreView() {
+      var v = null;
+      try { v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); } catch (e) { v = null; }
+      if (!v || typeof v !== 'object') return;
+      if (v.filters && typeof v.filters === 'object') {
+        FILTERS.forEach(function (f) {
+          if (!Object.prototype.hasOwnProperty.call(v.filters, f.id)) return;
+          var stored = v.filters[f.id];
+          F[f.id] = stored;
+          if (isRange(f)) {
+            if (RANGES[f.id] && Array.isArray(stored) && stored.length === 2) {
+              var raw = rangeRaw(f, stored);
+              RANGES[f.id].restore(raw[0], raw[1]);
+            }
+            return;
+          }
+          var el = document.getElementById(ns + f.id);
+          if (!el) return;
+          if (el.type === 'checkbox') el.checked = !!stored;
+          else if (f.kind === 'maxMoney') el.value = stored == null ? '' : stored / 1e6;
+          else el.value = stored == null ? '' : stored;
+        });
+      }
+      if (typeof v.sortKey === 'string') sortKey = v.sortKey;
+      if (typeof v.sortDir === 'number') sortDir = v.sortDir < 0 ? -1 : 1;
+      if (typeof v.keepUnknown === 'boolean') {
+        keepUnknown = v.keepUnknown;
+        if (unkEl) unkEl.checked = keepUnknown;
+      }
+      if (Array.isArray(v.marks)) {
+        markSel = v.marks.slice();
+        var markFilterEl = document.getElementById(ns + 'MarkFilter');
+        if (markFilterEl) {
+          [].forEach.call(markFilterEl.querySelectorAll('button[data-mark]'), function (x) {
+            if (x.dataset.mark === '') return;
+            x.classList.toggle('on', markSel.indexOf(x.dataset.mark) !== -1);
+          });
+        }
+      }
+      if (typeof v.hasNote === 'boolean') {
+        noteOnly = v.hasNote;
+        if (noteEl) noteEl.checked = noteOnly;
+      }
+      var activeTh = head.querySelector('th[data-sort="' + sortKey + '"]');
+      if (activeTh) {
+        [].forEach.call(head.querySelectorAll('th'), function (x) { x.removeAttribute('data-dir'); });
+        activeTh.setAttribute('data-dir', sortDir > 0 ? 'up' : 'down');
+      }
+    }
 
     // Действующее значение: выставленное человеком важнее вытащенного
     // классификатором из текста объявления.
@@ -1480,9 +1579,16 @@ window.slTable = (function () {
           if (f.kind === 'bool' && !r[f.field]) return false;
           if (f.kind === 'notTop' && r.floor != null && r.floors != null && r.floor === r.floors) return false;
         }
-        if (F.mark === 'note') return !!m.note;
-        if (F.mark === 'none' && m.c) return false;
-        if (F.mark && F.mark !== 'none' && m.c !== F.mark) return false;
+        // Цвет — объединение (ИЛИ): несколько выбранных кнопок показывают
+        // объекты любого из выбранных цветов. «Есть заметка» — отдельная
+        // ось, пересечение (И) с выбором по цвету, а не седьмой вариант
+        // той же радио-группы: цвет и наличие текста не исключают друг
+        // друга, и раньше их нельзя было скомбинировать вовсе.
+        if (markSel.length) {
+          var matchesMark = markSel.some(function (v) { return v === 'none' ? !m.c : m.c === v; });
+          if (!matchesMark) return false;
+        }
+        if (noteOnly && !m.note) return false;
         return true;
       });
     }
@@ -1678,6 +1784,7 @@ window.slTable = (function () {
         if (x === th) x.setAttribute('data-dir', sortDir > 0 ? 'up' : 'down');
       });
       render();
+      saveView();
     });
 
     // ---------- ручки диапазона ----------
@@ -1744,6 +1851,8 @@ window.slTable = (function () {
       hi.addEventListener('input', apply);
       RANGES[f.id] = { lo: lo, hi: hi, reset: function () {
         lo.value = rangeLo(f); hi.value = rangeHi(f); paint();
+      }, restore: function (a, b) {
+        lo.value = a; hi.value = b; apply();
       } };
       paint();
     }
@@ -1764,11 +1873,22 @@ window.slTable = (function () {
       });
     });
 
+    // Цвет — multiselect (клик по кнопке переключает её независимо от
+    // остальных); «все» не хранит своё состояние, а очищает выбор.
     document.getElementById(ns + 'MarkFilter').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
-      F.mark = b.dataset.mark;
-      [].forEach.call(this.querySelectorAll('button'), function (x) { x.classList.toggle('on', x === b); });
+      var v = b.dataset.mark;
+      if (v === '') {
+        markSel = [];
+      } else {
+        var i = markSel.indexOf(v);
+        if (i === -1) markSel.push(v); else markSel.splice(i, 1);
+      }
+      [].forEach.call(this.querySelectorAll('button[data-mark]'), function (x) {
+        if (x.dataset.mark === '') return;
+        x.classList.toggle('on', markSel.indexOf(x.dataset.mark) !== -1);
+      });
       render();
     });
 
@@ -1776,6 +1896,35 @@ window.slTable = (function () {
     if (unkEl) {
       unkEl.addEventListener('change', function (e) { keepUnknown = e.target.checked; render(); });
     }
+
+    var noteEl = document.getElementById(ns + 'HasNote');
+    if (noteEl) {
+      noteEl.addEventListener('change', function (e) { noteOnly = e.target.checked; render(); });
+    }
+
+    // Восстанавливается здесь — после того как и диапазонные, и обычные
+    // контролы, и MarkFilter/HasNote уже подключены (RANGES заполнен,
+    // unkEl/noteEl существуют), но до первой отрисовки.
+    restoreView();
+
+    // ---------- сохранение вида — делегированием, а не поштучно ----------
+    // Раньше saveView() вызывался вручную в конце каждого обработчика —
+    // семь мест, и цветные метки/«только с заметкой» однажды выпали
+    // именно потому, что для них написали обработчик, но забыли дописать
+    // сохранение рядом (баг конвенции, не конструкции). Все элементы
+    // панели — фильтры, диапазоны, метки, HasNote, Unknown, Reset — лежат
+    // внутри ОДНОГО контейнера #{ns}Controls; input/change/click из него
+    // всплывают сюда ПОСЛЕ того, как конкретный обработчик элемента уже
+    // обновил состояние (он ближе к событию, отрабатывает первым). Поэтому
+    // достаточно один раз сохранить итог здесь — и это автоматически
+    // покрывает любой контрол, который появится в панели ЗАВТРА, без
+    // необходимости вспомнить дописать вызов рядом с новым обработчиком.
+    // Сортировка (клик по заголовку колонки) физически вне этого
+    // контейнера — у неё остаётся свой явный вызов, ниже.
+    var controlsEl = document.getElementById(ns + 'Controls');
+    controlsEl.addEventListener('input', saveView);
+    controlsEl.addEventListener('change', saveView);
+    controlsEl.addEventListener('click', saveView);
 
     document.getElementById(ns + 'Reset').addEventListener('click', function () {
       // Сброс возвращает К УМОЛЧАНИЯМ, а не в пустоту. Иначе кнопка
@@ -1791,12 +1940,17 @@ window.slTable = (function () {
         if (el.type === 'checkbox') el.checked = !!f.def;
         else el.value = f.def == null ? '' : f.def;
       });
-      [].forEach.call(document.querySelectorAll('#' + ns + 'MarkFilter button'), function (x) {
-        x.classList.toggle('on', x.dataset.mark === '');
+      markSel = [];
+      [].forEach.call(document.querySelectorAll('#' + ns + 'MarkFilter button[data-mark]'), function (x) {
+        x.classList.remove('on');
       });
+      noteOnly = false;
+      if (noteEl) noteEl.checked = false;
       sortKey = "mins"; sortDir = 1;
       [].forEach.call(head.querySelectorAll('th'), function (x) { x.removeAttribute('data-dir'); });
       render();
+      // saveView() не нужен явно — клик по этой кнопке тоже внутри
+      // #{ns}Controls и поймается делегированным слушателем выше.
     });
 
     // Таблица отдаёт наружу читаемый срез своих помеченных строк —
@@ -1889,14 +2043,14 @@ window.slTable = (function () {
   <div class="sl-group">
     <label>метка</label>
     <div class="sl-marks" id="thMarkFilter">
-      <button type="button" data-mark="" class="on">все</button>
+      <button type="button" data-mark="" class="sl-mark-all" title="сбросить выбор цвета">все</button>
       <button type="button" data-mark="g" class="m-g" title="зелёные">●</button>
       <button type="button" data-mark="y" class="m-y" title="жёлтые">●</button>
       <button type="button" data-mark="r" class="m-r" title="красные">●</button>
       <button type="button" data-mark="none" title="без метки">○</button>
-      <button type="button" data-mark="note" class="m-note" title="только с заметкой">✎</button>
     </div>
   </div>
+  <label class="sl-check"><input type="checkbox" id="thHasNote"> только с заметкой</label>
   <label class="sl-check" title="Поле, которого нет в объявлении, — это пробел в данных, а не ответ «не подходит». Пока галочка стоит, такие объекты остаются в списке."><input type="checkbox" id="thUnknown" checked> оставлять с неизвестными полями</label>
   <span class="sl-spacer"></span>
   <span class="sl-count" id="thCount"></span>
@@ -1966,7 +2120,7 @@ window.slTable = (function () {
 
 <footer class="foot">
 <!-- FOOTER:START -->
-  <p>Собрано 20.08.2026
+  <p>Собрано 22.08.2026
   из выгрузки от 19.08.2026. Числа на странице генерируются из данных:
   <code>node tools\dashboard-houses.js</code>. Руками страница не правится.</p>
   <p>Критерии — <code>search parameters.txt</code>. Метод — скиллы проекта
