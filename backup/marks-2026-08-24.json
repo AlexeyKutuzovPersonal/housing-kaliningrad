@@ -1,0 +1,60 @@
+{
+ "снято": "2026-08-24T03:16:35.523Z",
+ "правка": 45,
+ "сырыеОтметки": {
+  "avito:https://www.avito.ru/kaliningradskaya_oblast_sovetsk/doma_dachi_kottedzhi/dom_143_m_na_uchastke_8_sot._2897103960": {
+   "c": "r",
+   "note": "Alexey",
+   "fin": null,
+   "by": "Alexey Mac"
+  },
+  "avito:https://www.avito.ru/chernyahovsk/doma_dachi_kottedzhi/dom_1477_m_na_uchastke_12_sot._8206846228": {
+   "c": "y",
+   "note": "Alexey",
+   "fin": null,
+   "by": "Alexey Mac"
+  },
+  "avito:https://www.avito.ru/kaliningrad/doma_dachi_kottedzhi/dom_107_m_na_uchastke_623_ga_8156291381": {
+   "c": "g",
+   "note": "Alexey",
+   "fin": null,
+   "by": "Alexey Mac"
+  },
+  "cian:https://kaliningrad.cian.ru/sale/suburban/332247539/": {
+   "c": "y",
+   "note": "проверка без ВПН",
+   "fin": null,
+   "by": "Alexey Mac"
+  },
+  "domclick:https://kaliningrad.domclick.ru/card/sale__house__2061686785": {
+   "c": null,
+   "note": null,
+   "fin": null,
+   "by": "игорь"
+  },
+  "avito:https://www.avito.ru/kaliningrad/doma_dachi_kottedzhi/dom_106_m_na_uchastke_455_ga_3788960254": {
+   "c": "g",
+   "note": "было да сейчас без",
+   "fin": null,
+   "by": "игорь"
+  },
+  "avito:https://www.avito.ru/kaliningrad/doma_dachi_kottedzhi/dom_320_m_na_uchastke_6_sot._1642168312": {
+   "c": "r",
+   "note": "\n\n",
+   "fin": null,
+   "by": "игорь"
+  },
+  "avito:https://www.avito.ru/kaliningrad/doma_dachi_kottedzhi/dom_120_m_na_uchastke_12_sot._8202066258": {
+   "c": "y",
+   "note": "дом +таунхаус в городе",
+   "fin": null,
+   "by": "игорь"
+  },
+  "avito:https://www.avito.ru/kaliningrad/doma_dachi_kottedzhi/dom_163_m_na_uchastke_5_sot._8115094440": {
+   "c": "r",
+   "note": null,
+   "fin": null,
+   "by": "игорь"
+  }
+ }
+}
