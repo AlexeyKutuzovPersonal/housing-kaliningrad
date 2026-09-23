@@ -352,7 +352,15 @@ async function main() {
     // площадками рядом ещё стоит значок ⚠ — берём только число.
     // Пустые цены отбрасываем: они всегда в конце в обе стороны, и
     // монотонность по ним проверять нечего.
-    const цены = async (p) => (await p.$$eval('#hsBody tr td:nth-child(3)',
+    //
+    // Номер колонки цены берётся из #hsCfg, а не пишется числом
+    // (td:nth-child(3)): «Добавлено» встало первой колонкой 2026-09-23 и
+    // сдвинуло всё на одну позицию — этот тест на том и сломался один раз.
+    const priceColN = await A.evaluate(() => {
+      const cfg = JSON.parse(document.getElementById('hsCfg').textContent);
+      return cfg.cols.findIndex((c) => c.k === 'price') + 2; // +1 за колонку «метка», +1 за 1-индексацию nth-child
+    });
+    const цены = async (p) => (await p.$$eval(`#hsBody tr td:nth-child(${priceColN})`,
       (tds) => tds.map((td) => Number(String(td.textContent).replace(/[^\d,]/g, '').replace(',', '.')))))
       .filter((v) => Number.isFinite(v) && v > 0);
     await A.click('#hsHead th[data-sort="price"]');
