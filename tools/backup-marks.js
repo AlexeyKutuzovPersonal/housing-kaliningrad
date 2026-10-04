@@ -59,15 +59,25 @@ async function main() {
     }
   }
 
+  // Применённые фильтры с 2026-10-04 тоже общие и тоже живут ТОЛЬКО в
+  // базе — localStorage им теперь кэш, а не хранилище. Снимок без них
+  // был бы неполным ровно в том смысле, ради которого он делается:
+  // база исчезнет — исчезнут и они, а восстанавливать пороги брифа
+  // пришлось бы по памяти. Поле необязательное: старый сервер его не
+  // отдаёт, и снимок от этого не ломается.
+  const views = data.views || {};
+  const v = Object.keys(views).length;
+
   const out = path.join(ROOT, 'backup', `marks-${new Date().toISOString().slice(0, 10)}.json`);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, JSON.stringify({
     снято: new Date().toISOString(),
     правка: data.rev,
     сырыеОтметки: marks,
+    общийВид: views,
   }, null, 1));
 
-  console.log(`Отметок: ${n}, правка ${data.rev}`);
+  console.log(`Отметок: ${n}, видов: ${v}, правка ${data.rev}`);
   console.log(`→ ${path.relative(process.cwd(), out)}`);
 }
 

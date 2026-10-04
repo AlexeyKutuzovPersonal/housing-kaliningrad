@@ -1,5 +1,5 @@
 {
- "снято": "2026-10-04T09:54:49.254Z",
+ "снято": "2026-10-04T09:56:52.596Z",
  "правка": 335,
  "сырыеОтметки": {
   "avito:https://www.avito.ru/kaliningradskaya_oblast_sovetsk/doma_dachi_kottedzhi/dom_143_m_na_uchastke_8_sot._2897103960": {
@@ -1771,6 +1771,20 @@
    "note": "ремонт? ",
    "fin": null,
    "by": "игорь"
+  }
+ },
+ "общийВид": {
+  "hs": {
+   "state": "{\"filters\":{\"Price\":[9500000,17000000],\"AreaMin\":95,\"AreaMax\":201,\"LandMin\":5,\"LandMax\":15,\"Floors\":1,\"Year\":2010,\"RoomsMin\":2,\"RoomsMax\":4,\"Mins\":30,\"Walls\":true,\"Gas\":true,\"Water\":false,\"Fin\":true},\"keepUnknown\":true,\"marks\":[\"g\",\"none\"],\"hasNote\":false,\"rounds\":[]}",
+   "by": "игорь",
+   "at": "2026-10-04T09:45:40.096Z",
+   "rev": 334
+  },
+  "th": {
+   "state": "{\"filters\":{\"Price\":[0,17000000],\"AreaMin\":100,\"AreaMax\":130,\"LandMin\":6,\"LandMax\":15,\"Year\":2010,\"RoomsMin\":2,\"RoomsMax\":3,\"Mins\":30,\"Walls\":true,\"Gas\":true,\"Water\":true,\"Fin\":true},\"keepUnknown\":true,\"marks\":[],\"hasNote\":false,\"rounds\":[]}",
+   "by": "игорь",
+   "at": "2026-10-04T09:45:40.096Z",
+   "rev": 335
   }
  }
 }
