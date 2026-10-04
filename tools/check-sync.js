@@ -104,10 +104,86 @@ function killTree(pid) {
 }
 
 async function main() {
+  const wrangler = path.join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+
+  // ---------- 0. миграция ADD COLUMN не роняет то, что уже размечено ----------
+  // Отдельно от всего, что ниже: здесь база сперва заводится СО СТАРОЙ
+  // схемой (какой она была до 2026-10-04, без round) и правдоподобной
+  // строкой с цветом, заметкой и отделкой плюс строкой общего вида — так,
+  // как выглядит боевая база ДО применения migrations/2026-10-04-round.sql.
+  // В боевой на этот момент 295 отметок, 250 заметок и папины фильтры;
+  // миграция обязана оставить их теми же, добавив только round = NULL.
+  console.log('0. Миграция round.sql на базе со старой схемой (без round)…');
+  const d1 = (sql) => {
+    const r = spawnSync(process.execPath,
+      [wrangler, 'd1', 'execute', 'dom-kgd-marks', '--local', '--yes', `--command=${sql}`],
+      { cwd: ROOT, encoding: 'utf8' });
+    if (r.status !== 0) {
+      console.error(r.stderr || r.stdout);
+      throw new Error('d1 execute упал на: ' + sql.slice(0, 80));
+    }
+    return r.stdout;
+  };
+  d1('DROP TABLE IF EXISTS marks; DROP TABLE IF EXISTS marks_log; DROP TABLE IF EXISTS meta; DROP TABLE IF EXISTS views; DROP TABLE IF EXISTS views_log;');
+  // Схема ДО миграции — ровно то, что лежало в schema.sql до 2026-10-04
+  // (без колонки round). Завести её здесь сразу правильной значило бы не
+  // проверить вообще ничего.
+  d1(`CREATE TABLE marks (id TEXT PRIMARY KEY, color TEXT, note TEXT, fin TEXT, author TEXT, at TEXT NOT NULL, rev INTEGER NOT NULL);
+CREATE TABLE marks_log (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, color TEXT, note TEXT, fin TEXT, author TEXT, at TEXT NOT NULL, fields TEXT);
+CREATE TABLE views (ns TEXT PRIMARY KEY, state TEXT NOT NULL, author TEXT, at TEXT NOT NULL, rev INTEGER NOT NULL);
+CREATE TABLE views_log (seq INTEGER PRIMARY KEY AUTOINCREMENT, ns TEXT NOT NULL, state TEXT NOT NULL, author TEXT, at TEXT NOT NULL);
+CREATE TABLE meta (k TEXT PRIMARY KEY, v INTEGER NOT NULL);
+INSERT INTO meta (k, v) VALUES ('rev', 2);
+INSERT INTO marks (id, color, note, fin, author, at, rev) VALUES ('t:до-миграции', 'g', 'заметка до миграции', 'косметический', 'игорь', '2026-01-01T00:00:00Z', 1);
+INSERT INTO views (ns, state, author, at, rev) VALUES ('hs', '{"filters":{"Year":2010},"keepUnknown":true,"marks":["g"],"hasNote":false,"rounds":[]}', 'игорь', '2026-01-01T00:00:00Z', 2);`);
+  const schemaMig = spawnSync(process.execPath,
+    [wrangler, 'd1', 'execute', 'dom-kgd-marks', '--local', '--file=migrations/2026-10-04-round.sql', '--yes'],
+    { cwd: ROOT, encoding: 'utf8' });
+  if (schemaMig.status !== 0) {
+    console.error(schemaMig.stderr || schemaMig.stdout);
+    throw new Error('миграция migrations/2026-10-04-round.sql не легла');
+  }
+  // Проверяем не то, как САМ wrangler d1 execute форматирует NULL в JSON
+  // (у него на столбце, добавленном ALTER TABLE, есть своя причуда —
+  // отдаёт строку "null" текстом, а не JSON-значение null), а РЕАЛЬНЫЙ
+  // путь чтения: та же самая функция functions/api/marks.js, что стоит
+  // в проде, читает базу через биндинг D1. Временный сервер — только на
+  // время этой проверки, дальше поднимется постоянный для сквозных.
+  console.log('  поднимаю временный сервер — читаю тем же кодом, что в проде…');
+  const migSrv = spawn(process.execPath,
+    [wrangler, 'pages', 'dev', '--port', String(PORT), '--ip', '127.0.0.1',
+      '--binding', 'SYNC_TOKEN=' + TOKEN],
+    { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+  let migLog = '';
+  migSrv.stdout.on('data', (d) => { migLog += d; });
+  migSrv.stderr.on('data', (d) => { migLog += d; });
+  try {
+    await until('временный сервер отвечает', async () => {
+      const r = await fetch(`${BASE}/api/marks?since=0`, { headers: { 'x-sync-token': TOKEN } });
+      return r.ok;
+    }, 90000).catch((e) => { console.error(migLog.slice(-1500)); throw e; });
+    const body = await (await fetch(`${BASE}/api/marks?since=0`,
+      { headers: { 'x-sync-token': TOKEN } })).json();
+    const m = body.marks && body.marks['t:до-миграции'];
+    ok(!!(m && m.c === 'g' && m.note === 'заметка до миграции' && m.fin === 'косметический'),
+      'после миграции /api/marks по-прежнему отдаёт цвет/заметку/отделку существующей строки');
+    ok(!!m && m.round == null,
+      'round у строки, заведённой ДО миграции, — null («раунд не назначен»), а не ошибка и не 0');
+    // Фильтры отца с 2026-10-04 живут ТОЛЬКО здесь, и миграция marks
+    // проходит в сантиметре от них. Снимок их забирает, но проверить, что
+    // забирать ещё есть что, дешевле до выкладки, чем после.
+    const v = body.views && body.views.hs;
+    ok(!!(v && v.state.indexOf('"Year":2010') !== -1 && v.by === 'игорь'),
+      'общий вид (применённые фильтры) миграцию тоже пережил без изменений');
+  } finally {
+    killTree(migSrv.pid);
+  }
+  console.log('  готово — существующая разметка миграцию пережила без потерь\n');
+
+  // ---------- дальше как раньше: свежая схема для сквозных проверок ----------
   // Схема в локальной базе. Прогоняется каждый раз: таблиц может не
   // быть вовсе, а «CREATE TABLE IF NOT EXISTS» ничего не ломает.
   console.log('Схема в локальной базе…');
-  const wrangler = path.join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
 
   // База пересоздаётся ЦЕЛИКОМ, а не дочищается. Две причины.
   // Первая: остатки прошлого прогона делают стенд зелёным на сломанном
@@ -328,6 +404,61 @@ async function main() {
       ok(виден.заметка === заметка2 && /mk-y/.test(виден.цвет || ''),
         `после перезагрузки это ВИДНО в таблице ${кто}, а не только лежит в памяти`);
     }
+
+    // --- 6б. раунд просмотра доезжает и переживает перезагрузку ---
+    // Независимость от цвета проверяется здесь же: у объекта уже стоят
+    // жёлтая метка и заметка (секция 6), и установка раунда обязана их не
+    // тронуть, как и снятие раунда ниже. Раунд — своя ось, а не оттенок
+    // метки: объект бывает жёлтым без раунда и в раунде без цвета.
+    console.log('\n6б. Раунд просмотра доезжает до второго и переживает перезагрузку у обоих');
+    await A.selectOption(`#hsBody select.sl-round[data-id="${id}"]`, '2');
+    await settle(A, 'Алексея');
+    await B.evaluate(() => window.slSync.poll());
+    await until('раунд приехал ко второму', async () =>
+      await B.evaluate((x) => { const m = window.slStore.marks()[x]; return m && m.round === 2; }, id));
+    ok(true, 'раунд 2 доехал до второго браузера');
+    const выбранРаундУВторого = await B.evaluate((x) =>
+      (document.querySelector('#hsBody select.sl-round[data-id="' + CSS.escape(x) + '"]') || {}).value, id);
+    ok(выбранРаундУВторого === '2', 'у второго в самом select выбран «Р2», а не только в памяти');
+
+    const доРаунда = await A.evaluate((x) => window.slStore.marks()[x], id);
+    ok(!!(доРаунда && доРаунда.c === 'y' && доРаунда.note === заметка2),
+      'установка раунда не тронула цвет и заметку той же строки');
+
+    for (const [p, кто] of [[A, 'у поставившего'], [B, 'у второго']]) {
+      await p.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
+      await p.waitForSelector('#hsBody tr', { timeout: 120000 });
+      const m = await until('раунд поднялся после перезагрузки ' + кто, async () =>
+        await p.evaluate((x) => {
+          const v = window.slStore.marks()[x];
+          return v && v.round ? v : null;
+        }, id));
+      ok(m.round === 2, `раунд (2) на месте после перезагрузки ${кто}`);
+      const видноРаунд = await p.evaluate((x) =>
+        (document.querySelector('#hsBody select.sl-round[data-id="' + CSS.escape(x) + '"]') || {}).value, id);
+      ok(видноРаунд === '2', `после перезагрузки раунд ВИДЕН в select ${кто}, а не только лежит в памяти`);
+    }
+
+    console.log('\n6в. Снятие раунда («—») доезжает и не трогает цвет/заметку');
+    await A.selectOption(`#hsBody select.sl-round[data-id="${id}"]`, '');
+    await settle(A, 'Алексея');
+    await B.evaluate(() => window.slSync.poll());
+    await until('снятие раунда доехало до второго', async () =>
+      await B.evaluate((x) => { const m = window.slStore.marks()[x]; return !(m && m.round); }, id));
+    ok(true, 'снятие раунда доехало до второго браузера');
+    const послеСнятияРаунда = await A.evaluate((x) => window.slStore.marks()[x], id);
+    ok(!!(послеСнятияРаунда && послеСнятияРаунда.c === 'y' && послеСнятияРаунда.note === заметка2),
+      'снятие раунда не тронуло цвет и заметку той же строки');
+
+    // --- 6г. у таунхаусов виджета раунда нет вовсе ---
+    // Раунды заводятся таблице поимённо (markup('hs', …, { rounds })).
+    // Проверка обратной стороны: включить их «всем разом» — самая
+    // вероятная ошибка при переносе механики, и она выглядит как успех.
+    const раундовУТаунхаусов = await A.evaluate(() =>
+      document.querySelectorAll('#thBody select.sl-round').length
+      + (document.getElementById('thRoundFilter') ? 1 : 0));
+    ok(раундовУТаунхаусов === 0,
+      'у таблицы таунхаусов ни селекта раунда, ни фильтра раунда — по решению, а не по забывчивости');
 
     // --- 7. фильтры общие, сортировка личная ---
     // До 2026-10-04 фильтры были личными, и это читалось как пропажа:
@@ -597,6 +728,62 @@ async function main() {
     ok(вызовыСохранения > 0,
       'сохранение сработало и для контрола, добавленного в панель без ведома компонента — делегирование, не поштучная проводка');
     await A.evaluate(() => { var el = document.getElementById('hsRogueTestControl'); if (el) el.remove(); });
+
+    // --- 7ж. фильтр раунда — такой же общий, как остальные ---
+    // Здесь это ОТЛИЧАЕТСЯ от задачи квартиры: там вид личный, и выбор
+    // раунда живёт в localStorage своего браузера. У дома общее всё, что
+    // сужает выборку, — значит и раунд. Проверяется именно доставка
+    // ВЫБОРА фильтра, а не значения раунда (значение — секция 6б):
+    // «раунд» лежит вне FILTERS[], своей осью, и попасть в общий срез
+    // мог бы мимо — как однажды мимо сохранения попали цветные метки.
+    console.log('\n7ж. Выбор фильтра раунда доезжает до второго');
+    await A.click('#hsReset');
+    await sleep(400);
+    await A.evaluate(() => {
+      const b = document.querySelector('#hsRoundFilter input[data-round="2"]');
+      b.checked = true;
+      b.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await settle(A, 'Алексея');
+    await B.evaluate(() => window.slSync.poll());
+    await until('выбор раунда приехал ко второму', async () =>
+      await B.evaluate(() => {
+        const b = document.querySelector('#hsRoundFilter input[data-round="2"]');
+        return !!(b && b.checked);
+      }));
+    ok(true, 'поставленная галочка «раунд 2» доехала до второго браузера');
+    ok((await B.textContent('#hsRoundSummary')).trim() === 'раунд 2',
+      'у второго подпись фильтра называет выбранный раунд, а не только галочка стоит');
+
+    for (const [p, кто] of [[A, 'у поставившего'], [B, 'у второго']]) {
+      await p.reload({ waitUntil: 'domcontentloaded', timeout: 120000 });
+      // Ждём САМ КОНТРОЛ, а не строку таблицы. Раунд ни одному объекту
+      // сейчас не присвоен (его сняли в 6в), поэтому под фильтром «раунд
+      // 2» таблица законно пуста — ожидание строки здесь не дождалось бы
+      // никогда и выглядело бы поломкой страницы.
+      // state: 'attached' — чекбокс лежит внутри закрытого <details> и
+      // видимым не станет никогда, пока список не раскрыли.
+      await p.waitForSelector('#hsRoundFilter input[data-round="2"]',
+        { state: 'attached', timeout: 120000 });
+      const стоит = await until('выбор раунда поднялся после перезагрузки ' + кто, async () =>
+        await p.evaluate(() => {
+          const b = document.querySelector('#hsRoundFilter input[data-round="2"]');
+          return b && b.checked ? true : null;
+        }));
+      ok(стоит === true, `выбор «раунд 2» на месте после перезагрузки ${кто}`);
+      // Заодно: пустой список под фильтром показывает объяснение, а не
+      // просто пустоту — иначе общий фильтр читается как пропажа данных.
+      ok(await p.evaluate(() => {
+        const e = document.getElementById('hsEmpty');
+        return !!(e && !e.hidden);
+      }), `пустой под фильтром список подписан «не подошёл ни один объект» ${кто}`);
+    }
+    await A.click('#hsReset');
+    await settle(A, 'Алексея');
+    await B.evaluate(() => window.slSync.poll());
+    await sleep(600);
+    ok((await B.textContent('#hsRoundSummary')).trim() === 'любой',
+      'сброс фильтров у одного вернул второму подпись «любой» — выбор раунда снят у обоих');
 
     // --- 7г. контрол под курсором чужой вид не выдёргивает ---
     // То же правило, что для заметки под курсором: пришедшая правка
