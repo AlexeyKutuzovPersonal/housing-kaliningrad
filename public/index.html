@@ -594,7 +594,7 @@ footer code { font-family: var(--f-num); color: var(--ink-2); }
 <!-- UPDATED:START -->
   <p class="updated">
     <span class="updated-dot" aria-hidden="true"></span>
-    Страница обновлена <time datetime="2026-09-29T04:34:15.130Z" data-updated>29 сентября 2026 г. в 06:34 по Калининграду</time>
+    Страница обновлена <time datetime="2026-10-04T09:31:12.392Z" data-updated>4 октября 2026 г. в 11:31 по Калининграду</time>
   </p>
   <script>
   (function () {
@@ -794,7 +794,25 @@ document.addEventListener('DOMContentLoaded', function () {
       var время = st.at
         ? st.at.toTimeString().slice(0, 5)
         : null;
-      if (st.state === 'auth') {
+      // Общие фильтры: список двигается сам, когда второй его сузил.
+      // Движение без объяснения читается как сбой страницы, поэтому
+      // у него всегда есть подпись — кто и когда.
+      var вид = '';
+      if (st.sharedView) {
+        вид = ' · фильтры общие' + (st.viewBy
+          ? ', менял ' + st.viewBy + (st.viewAt ? ' в ' + new Date(st.viewAt).toTimeString().slice(0, 5) : '')
+          : '');
+      }
+      if (st.state === 'key') {
+        // 403: сервер ответил и ключ страницы не принял. Обновление
+        // вкладки не поможет — ключ зашит в неё саму. Единственное
+        // верное действие человека здесь: не чистить браузер, где лежат
+        // его неотправленные правки, и сказать об этом.
+        bar.classList.add('bad');
+        txt.innerHTML = '<b>Сервер не принимает ключ этой страницы.</b> ' +
+          'Правки сохранены в этом браузере и уйдут, когда страницу пересоберут — ' +
+          'не очищайте данные браузера и сообщите Алексею.' + ждут;
+      } else if (st.state === 'auth') {
         bar.classList.add('bad');
         txt.innerHTML = '<b>Сессия истекла — обновите страницу.</b> ' +
           'Ваши правки сохранены здесь и уйдут после входа.' + ждут;
@@ -806,7 +824,7 @@ document.addEventListener('DOMContentLoaded', function () {
         txt.innerHTML = '<b>' + n + '</b> отмечено · общая разметка · отправляю…' + ждут;
       } else {
         txt.innerHTML = (n ? '<b>' + n + '</b> отмечено · ' : '') +
-          'общая разметка, видна обоим' +
+          'общая разметка, видна обоим' + вид +
           (время ? ' · сверено в ' + время : '');
       }
       return;
@@ -1077,7 +1095,22 @@ window.slTable = (function () {
   var ROUND_TITLE = "раунд просмотра";
   var SORT_RANK = {};
   var SORT_ALIAS = {};
-  var SYNC = {"endpoint":"/api/marks","token":"82c13e32071c29adea15f6fbabd8ae67ba185558278b15f1"};
+  var SYNC = {"endpoint":"/api/marks","token":"5ab8d19b6ec621471f405f6fbc270d1686793c904b0ea61f"};
+  // Вид страницы (какие фильтры применены) — общий, как и метки.
+  // Разделения по пользователям нет: страницу открывают двое по одной
+  // ссылке, и оба обязаны видеть один список. Без sharedView вид, как
+  // и раньше, личный и живёт только в localStorage.
+  var SHARED_VIEW = true;
+  // РАЗОВЫЙ перенос фильтров конкретного браузера в общие. Нужен ровно
+  // один раз — в момент, когда фильтры из личных становятся общими.
+  // До этого они нигде, кроме браузера своего хозяина, не существуют:
+  // ни на сервере, ни в выгрузке, ни у второго человека. Правило «на
+  // сервере пусто — публикует первый открывший» этого не решает, оно
+  // решает только «хоть какой-то вид появился»: кто откроет раньше,
+  // того фильтры и станут общими. Здесь названо имя того браузера,
+  // чьи фильтры переносим, и перенос случается один раз НАВСЕГДА,
+  // независимо от того, кто открыл страницу раньше.
+  var SEED_FROM = "игорь";
 
   // ---------- хранение ----------
   // Без опции sync отметки живут только в localStorage браузера. Это НЕ
@@ -1225,6 +1258,7 @@ window.slTable = (function () {
     var ENDPOINT = SYNC.endpoint;
     var TOKEN = SYNC.token;
     var QKEY = STORE + ':queue';
+    var VQKEY = STORE + ':viewqueue';
     var WHO = STORE + ':who';
     var rev = 0;
     var pending = {};
@@ -1232,6 +1266,42 @@ window.slTable = (function () {
     var timer = null;
     var state = 'wait';
     var seenAt = null;
+
+    // ---------- общий вид страницы ----------
+    // VIEWS — таблицы, которые зарегистрировались (строятся ПОЗЖЕ этого
+    // блока). lastViews — последнее, что пришло с сервера: первый опрос
+    // почти всегда успевает раньше, чем появится первая таблица, и без
+    // этого снимка его ответ пропал бы, а общий вид применился бы только
+    // через 20 секунд, следующим опросом.
+    var VIEWS = {};
+    var pendingView = {};
+    var lastViews = null;
+    var viewBy = null;
+    var viewAt = null;
+    // Нужен ли этому браузеру разовый перенос своих фильтров в общие.
+    // Считается ОДИН раз при загрузке: имя совпало и перенос ещё не
+    // делался. Отметка «сделан» ставится только после успешной
+    // отправки — иначе обрыв связи на первой же загрузке съел бы
+    // единственную попытку, а фильтры существуют только здесь.
+    var SEEDED_KEY = STORE + ':shared-view-seeded';
+    var нуженПеренос = false;
+    if (SHARED_VIEW && SEED_FROM) {
+      try {
+        нуженПеренос = localStorage.getItem(WHO) === SEED_FROM
+          && !localStorage.getItem(SEEDED_KEY);
+      } catch (e) { нуженПеренос = false; }
+    }
+
+    // Очередь вида, в отличие от очереди меток, перезагрузку НЕ
+    // переживает — и это не экономия, а разный смысл потери.
+    // Метка — чужая работа, её нельзя терять никогда. Вид — настройка,
+    // и неотправленный вчерашний вид, всплывший после перезагрузки,
+    // молча затирает на сервере то, что второй человек настроил за это
+    // время. Пропавший фильтр человек выставит заново за секунду;
+    // восстановить затёртый чужой он не может никак.
+    // На этом и поймали: вкладку перезагружали с непустой очередью, и
+    // она публиковала свой прошлый фильтр поверх нового общего.
+    try { localStorage.removeItem(VQKEY); } catch (e) {}
 
     var ПОЛЯ = ['c', 'note', 'fin', 'rating', 'round'];
 
@@ -1252,10 +1322,15 @@ window.slTable = (function () {
       try { localStorage.setItem(QKEY, JSON.stringify(pending)); } catch (e) {}
     }
 
-    function who() {
+    // тихо: не спрашивать имя, даже если его ещё нет. Нужно для
+    // отправок, которые человек не инициировал (посев общего вида):
+    // модальный вопрос за факт открытия страницы — это изменение
+    // интерфейса, которого никто не просил.
+    function who(тихо) {
       var n = null;
       try { n = localStorage.getItem(WHO); } catch (e) {}
       if (!n) {
+        if (тихо) return null;
         n = (window.prompt('Как подписывать ваши отметки? Имя увидит второй участник.') || '').trim();
         if (!n) n = 'без имени';
         try { localStorage.setItem(WHO, n); } catch (e) {}
@@ -1268,20 +1343,73 @@ window.slTable = (function () {
     // Ответ не JSON — это почти всегда страница входа: сессия истекла.
     // Молчать нельзя, иначе разметка перестанет доезжать без единого
     // видимого признака, а человек продолжит размечать в пустоту.
+    //
+    // 403 — ДРУГОЕ состояние, и смешивать их было дорого. Сервер ответил
+    // и ответил осмысленно: ключ страницы ему не подходит. Обновление
+    // вкладки тут не помогает ничем — ключ зашит в саму страницу, и
+    // пока её не пересоберут, он будет прежним. С августа по октябрь
+    // 2026 здесь показывалось «Сессия истекла — обновите страницу»,
+    // и шесть недель разметки копились в браузере, пока оба были
+    // уверены, что просто что-то подвисло.
     function asJson(res) {
+      if (res.status === 403) { var e2 = new Error('ключ не принят'); e2.key = true; throw e2; }
       var ct = res.headers.get('content-type') || '';
       if (ct.indexOf('json') === -1) { var err = new Error('ответ не json'); err.auth = true; throw err; }
-      if (res.status === 403) { var e2 = new Error('доступ закрыт'); e2.auth = true; throw e2; }
+      // Любой НЕ-200 — отказ, даже если тело разобралось как json.
+      // Здесь стояла проверка только на content-type, и это тихо
+      // теряло работу: сервер отвечает ошибкой json-телом (400, 413,
+      // 500 — все до одного), клиент считал это успехом и чистил
+      // очередь. Правка не ушла, из очереди исчезла, а ближайший опрос
+      // перекрашивал строку обратно серверным значением.
+      if (!res.ok) { var e3 = new Error('сервер отказал: ' + res.status); throw e3; }
       return res.json();
     }
-    function fail(err) { setState(err && err.auth ? 'auth' : 'offline'); }
+    function fail(err) {
+      setState(err && err.key ? 'key' : (err && err.auth ? 'auth' : 'offline'));
+    }
 
     function flush() {
       if (sending || READONLY) return;
       var ids = Object.keys(pending);
-      if (!ids.length) return;
+      var vids = Object.keys(pendingView);
+      if (!ids.length && !vids.length) return;
       sending = true;
       var changes = {};
+      // Вид уходит ЦЕЛИКОМ, не полями: это одна связная картина, и
+      // «только изменившийся фильтр» собрал бы на сервере список,
+      // которого ни у кого на экране не было. Снимок берётся в момент
+      // отправки, а не в момент клика: пока ждала задержка, человек мог
+      // подвинуть ещё два ползунка.
+      var views = {};
+      vids.forEach(function (ns) {
+        var slot = VIEWS[ns];
+        if (!slot) return;
+        views[ns] = slot.read();
+      });
+      vids = Object.keys(views);
+      // В очереди может лежать таблица, которой на этой странице уже
+      // нет (её ns остался от прошлой версии страницы). Запрос без
+      // единой правки сервер отвергает как пустой — и это выглядело бы
+      // как отказ связи, хотя отправлять просто нечего.
+      if (!ids.length && !vids.length) {
+        pendingView = {};
+        sending = false;
+        return;
+      }
+
+      // ОЧЕРЕДЬ ЗАБИРАЕТСЯ ЦЕЛИКОМ, а не чистится по списку после
+      // ответа. Пока запрос в полёте, человек продолжает работать, и
+      // его новый клик по тому же объекту ложится уже в ЧИСТУЮ очередь.
+      // Раньше ответ удалял ключ целиком — вместе с правкой, сделанной
+      // за эти секунды: она не уходила, из очереди исчезала, и
+      // ближайший опрос перекрашивал строку обратно серверным
+      // значением. Заметку спасала проверка курсора, цвет и раунд — нет.
+      var отправлено = pending;
+      var отправленВид = vids.slice();
+      pending = {};
+      saveQueue();
+      vids.forEach(function (ns) { delete pendingView[ns]; });
+
       ids.forEach(function (id) {
         // Снятое поле удалено из marks функцией prune. Уходит оно ЯВНЫМ
         // null, а не молчанием: промолчать значит оставить его у
@@ -1291,17 +1419,48 @@ window.slTable = (function () {
         var m = marks[id] || {};
         var d = {};
         ПОЛЯ.forEach(function (f) {
-          if (pending[id] && pending[id][f]) d[f] = m[f] || null;
+          if (отправлено[id] && отправлено[id][f]) d[f] = m[f] || null;
         });
         changes[id] = d;
       });
+
+      // Имя спрашиваем, только если уезжает чья-то РАБОТА. Посев вида
+      // уходит сам, без единого действия человека, и модальный вопрос
+      // «как подписывать ваши отметки?» за факт открытия страницы —
+      // это изменение интерфейса на ровном месте.
+      var автор = who(!ids.length);
+
       fetch(ENDPOINT, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-sync-token': TOKEN },
-        body: JSON.stringify({ by: who(), changes: changes })
+        body: JSON.stringify({ by: автор, changes: changes, views: views })
       }).then(asJson).then(function (j) {
-        ids.forEach(function (id) { delete pending[id]; });
-        saveQueue();
+        // Вид сервер мог не принять, даже ответив 200: таблицы видов в
+        // базе может не быть (схему не накатили). Метки при этом легли,
+        // и терять из-за вида их нельзя — поэтому сервер считает их
+        // отдельно, а мы возвращаем в очередь ровно вид.
+        var видовПринято = j && typeof j.видов === 'number' ? j.видов : отправленВид.length;
+        if (видовПринято < отправленВид.length) {
+          отправленВид.forEach(function (ns) { pendingView[ns] = 1; });
+        } else {
+          // Запомнить отправленное как «уже показываем»: иначе ближайший
+          // опрос вернёт наш же вид, сочтёт его чужим и перерисует
+          // таблицу под руками у того, кто двигал ползунок. lastViews
+          // обновляем тут же — иначе повтор придержанного вида (раз в
+          // три секунды) успел бы накатить предыдущее состояние.
+          отправленВид.forEach(function (ns) {
+            if (VIEWS[ns]) VIEWS[ns].last = views[ns];
+            if (lastViews && lastViews[ns]) lastViews[ns].state = views[ns];
+          });
+          // Перенос состоялся — больше никогда. Отметка ставится
+          // ЗДЕСЬ, после подтверждения сервера, а не в момент решения:
+          // иначе обрыв связи на первой загрузке съел бы единственную
+          // попытку, а переносить было бы уже нечего и неоткуда.
+          if (нуженПеренос && отправленВид.length) {
+            нуженПеренос = false;
+            try { localStorage.setItem(SEEDED_KEY, new Date().toISOString()); } catch (e) {}
+          }
+        }
         // Номер из ответа на ЗАПИСЬ намеренно игнорируется. Он говорит
         // только «твоя правка легла под этим номером» и ничего не
         // говорит о чужих. Если второй участник записал чуть раньше,
@@ -1311,8 +1470,20 @@ window.slTable = (function () {
         sending = false;
         seenAt = new Date();
         setState('ok');
-        if (Object.keys(pending).length) flush(); else poll();
-      }).catch(function (err) { sending = false; fail(err); });
+        if (Object.keys(pending).length || Object.keys(pendingView).length) flush();
+        else poll();
+      }).catch(function (err) {
+        // Отправка не удалась — возвращаем забранное в очередь, НЕ
+        // затирая то, что человек успел наработать за время запроса.
+        Object.keys(отправлено).forEach(function (id) {
+          if (!pending[id]) pending[id] = отправлено[id];
+          else Object.keys(отправлено[id]).forEach(function (f) { pending[id][f] = 1; });
+        });
+        saveQueue();
+        отправленВид.forEach(function (ns) { pendingView[ns] = 1; });
+        sending = false;
+        fail(err);
+      });
     }
 
     function applyRemote(incoming) {
@@ -1351,10 +1522,71 @@ window.slTable = (function () {
       return skipped;
     }
 
+    // Применить пришедший с сервера вид к одной таблице. Сравнение
+    // ПО СОДЕРЖИМОМУ, а не по номеру правки: собственная запись
+    // возвращается тем же опросом, и по номеру она неотличима от чужой —
+    // таблица перерисовывалась бы на каждый круг. Содержимое совпало —
+    // показываем уже его, делать нечего.
+    function applyOneView(ns, v) {
+      var slot = VIEWS[ns];
+      if (!slot || !v || !v.state) return true;
+      if (slot.last === v.state) return true;
+      // Своё неотправленное новее пришедшего — та же причина, что у меток.
+      if (pendingView[ns]) return false;
+      if (slot.busy()) return false;
+      slot.backup();
+      if (!slot.apply(v.state)) return true;   // мусор в state — не наша беда
+      slot.last = v.state;
+      viewBy = v.by || null;
+      viewAt = v.at || null;
+      return true;
+    }
+
+    // Посев при переходе на общий вид. На сервере вида ещё нет ни у
+    // одной таблицы, а у каждого в браузере лежит свой — и если не
+    // отправить его, общим станет не чей-то настроенный список, а
+    // умолчание той вкладки, которая первой что-нибудь тронет.
+    // Правило без привязки к человеку: сервер пуст — первый открывший
+    // публикует своё. Пробуем ОДИН раз на таблицу за загрузку страницы.
+    function seedViews(views) {
+      var посеяли = 0;
+      Object.keys(VIEWS).forEach(function (ns) {
+        var slot = VIEWS[ns];
+        if (slot.seeded) return;
+        slot.seeded = true;
+        // Разовый перенос публикует ПОВЕРХ уже имеющегося: переносим
+        // фильтры, которых на сервере никогда не было, и чей-то
+        // случайно попавший туда раньше вид их не отменяет.
+        if (!нуженПеренос && views && views[ns] && views[ns].state) return;
+        pendingView[ns] = 1;
+        посеяли++;
+      });
+      // Отправляем, только если ПОСЕЯЛИ. Условие «очередь непуста»
+      // здесь выглядело равноценным и им не было: очередь могла быть
+      // непустой от правки, которую человек делает прямо сейчас, и
+      // опрос уносил бы её на полпути, в недокрученном состоянии.
+      if (посеяли) { clearTimeout(timer); timer = setTimeout(flush, 400); }
+    }
+
+    function applyRemoteViews(views) {
+      if (!SHARED_VIEW) return 0;
+      lastViews = views || {};
+      var held = 0;
+      Object.keys(VIEWS).forEach(function (ns) {
+        if (!applyOneView(ns, lastViews[ns])) held++;
+      });
+      seedViews(lastViews);
+      return held;
+    }
+
     function poll() {
       fetch(ENDPOINT + '?since=' + rev, { headers: { 'x-sync-token': TOKEN } })
         .then(asJson).then(function (j) {
           var skipped = applyRemote(j && j.marks);
+          // Вид отдаётся целиком и счётчик меток не двигает: придержанный
+          // ползунок не должен стоить нам чужой МЕТКИ, которая в этом же
+          // ответе пришла и легла.
+          applyRemoteViews(j && j.views);
           // Счётчик двигаем ТОЛЬКО если применили всё. Пропущенное —
           // чужая правка на поле, где стоит курсор, или на объекте с
           // нашей неотправленной. Подняв счётчик, мы больше никогда её
@@ -1363,6 +1595,17 @@ window.slTable = (function () {
           if (!skipped && j && typeof j.rev === 'number') rev = j.rev;
           seenAt = new Date();
           setState('ok');
+          // Опрос прошёл — значит сервер снова отвечает. Неотправленное
+          // надо попробовать отдать ПРЯМО СЕЙЧАС, а не ждать, пока
+          // человек тронет что-нибудь ещё: провалившаяся отправка сама
+          // себя не повторяет, и после отказа сервера очередь лежала бы
+          // до следующей правки или до перезагрузки вкладки. Ровно это и
+          // случилось вживую: ключ починили, а открытые страницы
+          // продолжали копить разметку, пока их не перезагрузили.
+          if (!sending && (Object.keys(pending).length || Object.keys(pendingView).length)) {
+            clearTimeout(timer);
+            timer = setTimeout(flush, 300);
+          }
         }).catch(fail);
     }
 
@@ -1383,8 +1626,37 @@ window.slTable = (function () {
         // это один запрос на символ.
         timer = setTimeout(flush, 800);
       },
+      // Вид этой таблицы изменился. Отдельная очередь от меток: у них
+      // разный смысл потери. Метка — чужая работа, её нельзя терять
+      // никогда; вид — настройка, и отправить его имеет смысл только
+      // последним состоянием, поэтому в очереди лежит признак, а не
+      // снимок (снимок берётся в момент отправки, см. flush).
+      queueView: function (ns) {
+        if (READONLY || !SHARED_VIEW) return;
+        pendingView[ns] = 1;
+        setState('wait');
+        clearTimeout(timer);
+        // Ползунок зовёт сохранение на каждый пиксель — без задержки это
+        // запрос на каждое деление шкалы. Она длиннее, чем у заметки:
+        // фильтр крутят, пока не увидят нужный список, и промежуточные
+        // состояния второму человеку показывать незачем.
+        timer = setTimeout(flush, 1500);
+      },
+      // Таблицы строятся ПОСЛЕ этого блока, поэтому представляются сами.
+      // Ответ первого опроса к этому моменту обычно уже пришёл — он лежит
+      // в lastViews, и общий вид применяется сразу, а не через опрос.
+      registerView: function (ns, slot) {
+        if (!SHARED_VIEW) return;
+        VIEWS[ns] = slot;
+        if (lastViews) { applyOneView(ns, lastViews[ns]); seedViews(lastViews); }
+        if (window.slBar) window.slBar();
+      },
       state: function () {
-        return { state: state, at: seenAt, rev: rev, pending: Object.keys(pending).length };
+        return {
+          state: state, at: seenAt, rev: rev, pending: Object.keys(pending).length,
+          sharedView: SHARED_VIEW, viewBy: viewBy, viewAt: viewAt,
+          viewPending: Object.keys(pendingView).length
+        };
       },
       poll: poll
     };
@@ -1393,6 +1665,13 @@ window.slTable = (function () {
     // отправная точка не годится: пока вкладка была закрыта, он мог
     // разойтись с сервером, и расхождение молча осталось бы навсегда.
     poll();
+    // Придержанный вид (человек держал контрол) повторяется чаще, чем
+    // идёт общий опрос: двадцать секунд чужих фильтров — это двадцать
+    // секунд спора о разных списках.
+    if (SHARED_VIEW) setInterval(function () {
+      if (document.hidden || !lastViews) return;
+      Object.keys(VIEWS).forEach(function (ns) { applyOneView(ns, lastViews[ns]); });
+    }, 3000);
     // В скрытой вкладке не опрашиваем — это чистый расход квоты.
     setInterval(function () { if (!document.hidden) poll(); }, 20000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
@@ -1525,17 +1804,47 @@ window.slTable = (function () {
     // объектов (см. выше): потерять сохранённые фильтры не значит
     // потерять чью-то ручную разметку, а всего лишь откатиться к брифу.
     var VIEW_KEY = STORE + ':view:' + ns;
+
+    // Что из вида уходит на сервер и видно второму, а что остаётся
+    // личным. Сужающее — общее: иначе двое спорят о разных списках, не
+    // зная об этом. Сортировка личная: она ничего не прячет, а общая
+    // пересортировывала бы чужой список после каждого клика по
+    // заголовку колонки — движение, причину которого второй не видит.
+    function sharedView() {
+      return {
+        filters: F, keepUnknown: keepUnknown,
+        marks: markSel, hasNote: noteOnly, rounds: roundSel
+      };
+    }
+    function fullView() {
+      var v = sharedView();
+      v.sortKey = sortKey; v.sortDir = sortDir;
+      return v;
+    }
+    // Запись в хранилище БЕЗ отправки на сервер. Отдельно от saveView,
+    // потому что принятый с сервера вид тоже надо запомнить локально —
+    // но отправлять его обратно нельзя: это эхо, и на двух вкладках
+    // оно ходит по кругу.
+    function saveLocalView() {
+      try { localStorage.setItem(VIEW_KEY, JSON.stringify(fullView())); }
+      catch (e) { /* нет доступа к хранилищу — просто работаем без сохранения */ }
+    }
     function saveView() {
-      try {
-        localStorage.setItem(VIEW_KEY, JSON.stringify({
-          filters: F, sortKey: sortKey, sortDir: sortDir, keepUnknown: keepUnknown,
-          marks: markSel, hasNote: noteOnly, rounds: roundSel
-        }));
-      } catch (e) { /* нет доступа к хранилищу — просто работаем без сохранения */ }
+      saveLocalView();
+      // Общая часть уходит на сервер. Отложенно и по таблицам —
+      // механика та же, что у меток, см. slSync.queueView.
+      if (SHARED_VIEW && window.slSync) window.slSync.queueView(ns);
     }
     function restoreView() {
       var v = null;
       try { v = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); } catch (e) { v = null; }
+      applyView(v);
+    }
+    // Разложить вид по контролам. Делает это ПРОГРАММНО — ни один
+    // .value/.checked не порождает события, поэтому делегированный
+    // saveView ниже не срабатывает и пришедший с сервера вид не уезжает
+    // обратно на сервер эхом.
+    function applyView(v) {
       if (!v || typeof v !== 'object') return;
       if (v.filters && typeof v.filters === 'object') {
         FILTERS.forEach(function (f) {
@@ -2101,6 +2410,65 @@ window.slTable = (function () {
     controlsEl.addEventListener('change', saveView);
     controlsEl.addEventListener('click', saveView);
 
+    // Момент последнего движения в панели — им определяется «человек
+    // сейчас работает с фильтрами», см. busy() ниже. По фокусу это
+    // определить нельзя: после клика по чекбоксу фокус остаётся на нём.
+    var тронуто = 0;
+    ['input', 'change', 'click', 'keydown', 'pointerdown'].forEach(function (e) {
+      controlsEl.addEventListener(e, function () { тронуто = Date.now(); });
+    });
+
+    // ---------- вид на сервере: эта таблица представляется слою связи ----------
+    // Регистрация здесь, а не внутри блока синхронизации: тот отрабатывает
+    // один раз на страницу и ещё до того, как построена хоть одна таблица.
+    // Что уметь: отдать свой вид, принять чужой и честно сказать, что
+    // человек прямо сейчас держит контрол — иначе опрос выдёргивает
+    // ползунок из-под пальца.
+    if (SHARED_VIEW && window.slSync) {
+      window.slSync.registerView(ns, {
+        read: function () { return JSON.stringify(sharedView()); },
+        apply: function (s) {
+          var v = null;
+          try { v = JSON.parse(s); } catch (e) { return false; }
+          applyView(v);
+          saveLocalView();
+          render();
+          return true;
+        },
+        // Контрол, которым человек СЕЙЧАС пользуется, — не трогаем. То
+        // же правило, что для заметки под курсором в applyRemote.
+        //
+        // Но «фокус внутри панели» этим правилом быть не может: после
+        // клика по чекбоксу или кнопке фокус там и остаётся, и чужой
+        // фильтр не применялся бы, пока человек не щёлкнет куда-то ещё.
+        // Выглядит это ровно как исходная жалоба — «не вижу его
+        // фильтров». Считаем занятым только то, что действительно
+        // держат: поле ввода, ползунок, раскрытый список — плюс две
+        // секунды после последнего движения в панели (перетаскивание
+        // ползунка идёт сериями событий с паузами).
+        busy: function () {
+          if (Date.now() - тронуто < 2000) return true;
+          var a = document.activeElement;
+          if (!a || !controlsEl.contains(a)) return false;
+          var t = (a.getAttribute && a.getAttribute('type') || '').toLowerCase();
+          var tag = (a.tagName || '').toLowerCase();
+          return tag === 'select' || tag === 'textarea'
+            || (tag === 'input' && t !== 'checkbox' && t !== 'radio' && t !== 'button');
+        },
+        // Снимок своего вида ДО первой замены общим — один раз на
+        // браузер. Переход на общие фильтры иначе необратим: настройка,
+        // которую человек собирал неделями, исчезает без следа.
+        backup: function () {
+          try {
+            var k = VIEW_KEY + ':before-shared';
+            if (localStorage.getItem(k) == null) {
+              localStorage.setItem(k, localStorage.getItem(VIEW_KEY) || JSON.stringify(fullView()));
+            }
+          } catch (e) { /* нет хранилища — снимка не будет, работать это не мешает */ }
+        }
+      });
+    }
+
     document.getElementById(ns + 'Reset').addEventListener('click', function () {
       // Сброс возвращает К УМОЛЧАНИЯМ, а не в пустоту. Иначе кнопка
       // «сбросить фильтры» на странице с заданными критериями означает
@@ -2318,7 +2686,7 @@ window.slTable = (function () {
 
 <footer class="foot">
 <!-- FOOTER:START -->
-  <p>Собрано 29.09.2026
+  <p>Собрано 04.10.2026
   из накопительной базы на 29.09.2026. Числа на странице генерируются из данных:
   <code>node tools\dashboard-houses.js</code>. Руками страница не правится.</p>
   <p>Критерии — <code>search parameters.txt</code>. Метод — скиллы проекта

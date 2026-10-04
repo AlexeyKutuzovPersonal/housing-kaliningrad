@@ -28,11 +28,19 @@
 //    меньше возвращённого, и её никто уже не запросил бы.
 // 5. Нет токена в окружении — отказ. Не «работаем без проверки»:
 //    забытая переменная не должна выглядеть как исправная защита.
+// 6. Вид страницы (применённые фильтры) лежит ЗДЕСЬ ЖЕ и тоже общий.
+//    Разделения по пользователям в этом API нет нигде: ссылку
+//    открывают двое, и оба обязаны видеть один список. Строка одна на
+//    таблицу (ns), а не на человека. Отдаётся всегда целиком — это
+//    несколько сотен байт, дельта тут дороже самой передачи.
 // ============================================================
 
 const MAX_CHANGES = 5000;   // импорт папиной разметки идёт пачками
 const MAX_NOTE = 4000;      // заметка человека, а не вставленный роман
 const MAX_ID = 400;
+const MAX_VIEWS = 20;       // таблиц на странице единицы, не десятки
+const MAX_VIEW = 20000;     // вид — это фильтры, а не выгрузка данных
+const MAX_NS = 80;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -94,7 +102,25 @@ export async function onRequestGet({ request, env }) {
   for (const r of results || []) {
     marks[r.id] = { c: r.color, note: r.note, fin: r.fin, by: r.author };
   }
-  return json({ rev, marks });
+
+  // Вид отдаётся ЦЕЛИКОМ, без since. Строк тут единицы, а дельта по
+  // виду означала бы «страница, открытая со старым since, фильтров не
+  // увидит» — ровно тот отказ, который не виден: список показан, просто
+  // не тот. Таблица могла и не появиться — старая схема базы не повод
+  // ронять чтение меток.
+  let views = {};
+  try {
+    const v = await env.DB
+      .prepare('SELECT ns, state, author, at, rev FROM views')
+      .all();
+    for (const r of v.results || []) {
+      views[r.ns] = { state: r.state, by: r.author, at: r.at, rev: r.rev };
+    }
+  } catch (e) {
+    views = {};
+  }
+
+  return json({ rev, marks, views });
 }
 
 export async function onRequestPost({ request, env }) {
@@ -108,16 +134,31 @@ export async function onRequestPost({ request, env }) {
     return json({ ошибка: 'Тело запроса не разобралось как JSON' }, 400);
   }
 
-  const changes = body && body.changes;
-  if (!changes || typeof changes !== 'object') {
-    return json({ ошибка: 'Нет объекта changes' }, 400);
-  }
+  // changes и views независимы: правка вида приходит без единой метки,
+  // и наоборот. Поэтому «нет changes» — больше не ошибка сама по себе,
+  // ошибка — пустой запрос целиком.
+  const changes = (body && typeof body.changes === 'object' && body.changes) || {};
+  const views = (body && typeof body.views === 'object' && body.views) || {};
 
   const ids = Object.keys(changes).filter((id) => id && id.length <= MAX_ID);
-  if (!ids.length) return json({ ошибка: 'Пустой список правок' }, 400);
   if (ids.length > MAX_CHANGES) {
     return json({ ошибка: `Больше ${MAX_CHANGES} правок за раз — разбейте на части` }, 413);
   }
+
+  const nss = Object.keys(views).filter((ns) => ns && ns.length <= MAX_NS);
+  if (nss.length > MAX_VIEWS) {
+    return json({ ошибка: `Больше ${MAX_VIEWS} видов за раз` }, 413);
+  }
+  for (const ns of nss) {
+    if (typeof views[ns] !== 'string') {
+      return json({ ошибка: `Вид «${ns}» должен быть строкой JSON` }, 400);
+    }
+    if (views[ns].length > MAX_VIEW) {
+      return json({ ошибка: `Вид «${ns}» длиннее ${MAX_VIEW} символов` }, 413);
+    }
+  }
+
+  if (!ids.length && !nss.length) return json({ ошибка: 'Пустой список правок' }, 400);
 
   const author = clean(body.by, 80);
   const at = new Date().toISOString();
@@ -130,15 +171,18 @@ export async function onRequestPost({ request, env }) {
   ];
 
   // Занимаем сразу столько номеров, сколько правок: одним запросом,
-  // чтобы параллельная запись не влезла в середину диапазона.
+  // чтобы параллельная запись не влезла в середину диапазона. Вид
+  // занимает номер наравне с меткой — счётчик один на всю базу, и
+  // «правка вида» обязана в нём быть видна, иначе две подряд смены
+  // фильтров неотличимы одна от другой.
   const head = await env.DB
     .prepare('UPDATE meta SET v = v + ?1 WHERE k = ?2 RETURNING v')
-    .bind(ids.length, 'rev')
+    .bind(ids.length + nss.length, 'rev')
     .first();
   if (!head) return json({ ошибка: 'Счётчик правок не найден — база не размечена схемой' }, 500);
 
   const top = head.v;
-  const base = top - ids.length;   // номера base+1 … top
+  const base = top - ids.length - nss.length;   // метки: base+1 … base+ids.length
 
   // Обновляем ровно те колонки, что пришли. Флаг «поле присутствует»
   // уходит отдельным параметром: SQLite сам отличить «null, потому что
@@ -175,6 +219,47 @@ export async function onRequestPost({ request, env }) {
     batch.push(log.bind(id, знач.color, знач.note, знач.fin, author, at, тронуто.join(',')));
   });
 
-  await env.DB.batch(batch);
-  return json({ rev: top, принято: ids.length });
+  // Метки пишутся СВОИМ батчем и первыми. Вид — вторым и отдельным,
+  // хотя приехали они одним запросом. Причина: таблицы видов в базе
+  // может не быть вовсе (схему накатили не везде и не одновременно), и
+  // в общем батче её отсутствие уронило бы транзакцию ЦЕЛИКОМ — вместе
+  // с чужой разметкой, которая к виду никакого отношения не имеет.
+  // Деградировать должен вид, а не метки: фильтр человек выставит
+  // заново за секунду, разметку не восстановит никак.
+  if (batch.length) await env.DB.batch(batch);
+
+  // Вид заменяется ЦЕЛИКОМ, в отличие от метки. Разница не в
+  // небрежности: у метки поля правят двое независимо (один ставит цвет,
+  // второй дописывает заметку), а вид — это одна связная картина. Прислать
+  // «только изменившийся фильтр» значит собрать на сервере картину,
+  // которой ни у кого на экране не было.
+  let видов = 0;
+  if (nss.length) {
+    const vset = env.DB.prepare(
+      `INSERT INTO views (ns, state, author, at, rev)
+       VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT(ns) DO UPDATE SET
+         state = excluded.state, author = excluded.author,
+         at = excluded.at, rev = excluded.rev`
+    );
+    const vlog = env.DB.prepare(
+      'INSERT INTO views_log (ns, state, author, at) VALUES (?1, ?2, ?3, ?4)'
+    );
+    const vbatch = [];
+    nss.forEach((ns, i) => {
+      vbatch.push(vset.bind(ns, views[ns], author, at, base + ids.length + i + 1));
+      vbatch.push(vlog.bind(ns, views[ns], author, at));
+    });
+    try {
+      await env.DB.batch(vbatch);
+      видов = nss.length;
+    } catch (e) {
+      // Отвечаем 200 и честным счётчиком: метки легли, вид нет.
+      // Клиент сверяет «видов» с тем, что отправлял, и возвращает
+      // именно вид в очередь — метки повторно не шлёт.
+      видов = 0;
+    }
+  }
+
+  return json({ rev: top, принято: ids.length, видов });
 }
