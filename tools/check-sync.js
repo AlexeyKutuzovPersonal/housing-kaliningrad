@@ -367,6 +367,53 @@ INSERT INTO views (ns, state, author, at, rev) VALUES ('hs', '{"filters":{"Year"
       await B.evaluate((x) => !window.slStore.marks()[x], id));
     ok(true, 'снятие метки и заметки доехало до второго браузера');
 
+    // --- 4б. перенос метки с запасного ключа не теряет заметку и раунд ---
+    // Метка живёт под старым ключом строки (так бывает после смены
+    // площадки-победителя), страница показывает её как свою. Первая правка
+    // переносит её на текущий ключ. До 2026-10-09 под новым ключом уезжало
+    // только правленое поле, а со старого стирались цвет, заметка и
+    // отделка — заметка терялась на сервере, раунд висел под старым ключом.
+    console.log('\n4б. Перенос метки с запасного ключа строки');
+    const пара = await A.evaluate(() => {
+      const rows = JSON.parse(document.getElementById('hsData').textContent);
+      const shown = new Set([...document.querySelectorAll('#hsBody .mkb')].map((b) => b.dataset.id));
+      const r = rows.find((x) => shown.has(x.id) && x.altIds && x.altIds.length);
+      return r ? { id: r.id, alt: r.altIds[0] } : null;
+    });
+    ok(!!пара, 'на странице есть строка с запасным ключом');
+    if (пара) {
+      const заметкаАлт = 'заметка под старым ключом';
+      const посев = await fetch(`${BASE}/api/marks`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-sync-token': TOKEN },
+        body: JSON.stringify({ by: 'игорь', changes: { [пара.alt]: { c: 'y', note: заметкаАлт, round: 2 } } }),
+      });
+      ok(посев.ok, 'метка с заметкой и раундом посеяна под запасным ключом');
+      await sync(A, B);
+      const усыновлена = await A.evaluate((x) => {
+        const btn = document.querySelector('#hsBody .mkb[data-id="' + CSS.escape(x) + '"]');
+        const tr = btn ? btn.closest('tr') : null;
+        return !!(tr && tr.classList.contains('mk-y'));
+      }, пара.id);
+      ok(усыновлена, 'строка показывает метку старого ключа как свою');
+      await A.click(`#hsBody .mkb[data-id="${пара.id}"][data-c="g"]`);
+      await settle(A, 'Алексея');
+      const сервер = await (await fetch(`${BASE}/api/marks?since=0`, { headers: { 'x-sync-token': TOKEN } })).json();
+      const нов = сервер.marks[пара.id] || {}, стар = сервер.marks[пара.alt] || {};
+      ok(нов.c === 'g' && нов.note === заметкаАлт && нов.round === 2,
+        'на сервере под текущим ключом — новый цвет, прежняя заметка и прежний раунд');
+      ok(!стар.c && !стар.note && !стар.round, 'под старым ключом погашено всё, включая раунд');
+      await sync(B);
+      const уПапы = await B.evaluate((x) => window.slStore.marks()[x], пара.id);
+      ok(!!(уПапы && уПапы.note === заметкаАлт && уПапы.round === 2 && уПапы.c === 'g'),
+        'второй браузер видит перенесённую заметку и раунд, а не только цвет');
+      // убираем за собой: дальше проверки ждут чистую строку
+      await A.click(`#hsBody .mkb[data-id="${пара.id}"][data-c="g"]`);
+      await A.fill(`#hsBody .sl-note[data-id="${пара.id}"]`, '');
+      await A.selectOption(`#hsBody select.sl-round[data-id="${пара.id}"]`, '');
+      await settle(A, 'Алексея');
+      await sync(B);
+    }
+
     // --- 5. состояние связи проговаривается ---
     const текстПанели = await A.evaluate(() =>
       (document.getElementById('slStoreTxt') || {}).textContent || '');
