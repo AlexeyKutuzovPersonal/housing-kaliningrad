@@ -1,0 +1,87 @@
+{
+ "at": "2026-10-09T19:14:36.590Z",
+ "url": "https://dom-kgd-2be42d1d18.pages.dev/api/marks",
+ "rev": 381,
+ "before": {
+  "domclick:https://kaliningrad.domclick.ru/card/sale__house__2058498826": {
+   "c": "y",
+   "note": "в избр авито, строители",
+   "fin": null,
+   "round": null,
+   "by": "игорь"
+  },
+  "domclick:https://kaliningrad.domclick.ru/card/sale__house__2079304238": {
+   "c": "y",
+   "note": "строители...с ремонтом",
+   "fin": null,
+   "round": null,
+   "by": "игорь"
+  },
+  "cian:https://kaliningrad.cian.ru/sale/suburban/332396364/": {
+   "c": "r",
+   "note": "б/ремонта",
+   "fin": null,
+   "round": null,
+   "by": "игорь"
+  },
+  "cian:https://kaliningrad.cian.ru/sale/suburban/333528373/": {
+   "c": "r",
+   "note": null,
+   "fin": null,
+   "round": null,
+   "by": "игорь"
+  },
+  "domclick:https://kaliningrad.domclick.ru/card/sale__house__2079570463": {
+   "c": "g",
+   "note": "в изб авито, 2 с/у, газ отопл, ремонт, хозяйка павильон, терраса! Анна Иванова +799216115999, в/наблюдение... - Повтор",
+   "fin": null,
+   "round": 1,
+   "by": "игорь"
+  },
+  "avito:https://www.avito.ru/kaliningrad/doma_dachi_kottedzhi/dom_961_m_na_uchastke_9_sot._8322808096": {
+   "c": "g",
+   "note": "в избр авито, хоз блок, участок! 2 с/у, видеонаблюдение, +79216115999, Анна Иванова...переписка в авито",
+   "fin": null,
+   "round": null,
+   "by": "игорь"
+  }
+ },
+ "changes": {
+  "domclick:https://kaliningrad.domclick.ru/card/sale__house__2058498826": {
+   "c": "y",
+   "note": "в избр авито, строители | строители...с ремонтом",
+   "fin": null,
+   "round": null
+  },
+  "domclick:https://kaliningrad.domclick.ru/card/sale__house__2079304238": {
+   "c": null,
+   "note": null,
+   "fin": null,
+   "round": null
+  },
+  "cian:https://kaliningrad.cian.ru/sale/suburban/332396364/": {
+   "c": "r",
+   "note": "б/ремонта",
+   "fin": null,
+   "round": null
+  },
+  "cian:https://kaliningrad.cian.ru/sale/suburban/333528373/": {
+   "c": null,
+   "note": null,
+   "fin": null,
+   "round": null
+  },
+  "domclick:https://kaliningrad.domclick.ru/card/sale__house__2079570463": {
+   "c": "g",
+   "note": "в изб авито, 2 с/у, газ отопл, ремонт, хозяйка павильон, терраса! Анна Иванова +799216115999, в/наблюдение... - Повтор | в избр авито, хоз блок, участок! 2 с/у, видеонаблюдение, +79216115999, Анна Иванова...переписка в авито",
+   "fin": null,
+   "round": 1
+  },
+  "avito:https://www.avito.ru/kaliningrad/doma_dachi_kottedzhi/dom_961_m_na_uchastke_9_sot._8322808096": {
+   "c": null,
+   "note": null,
+   "fin": null,
+   "round": null
+  }
+ }
+}
